@@ -196,7 +196,7 @@ class GoogleAdsService:
             # Endpoint para listar campanhas
             endpoint = f"customers/{customer_id}/googleAds:search"
             
-            # Query GAQL base - Modificada para não usar JOIN
+            # Query GAQL base - Modificada para incluir budget.amount_micros
             query = """
                 SELECT
                     campaign.id,
@@ -204,6 +204,7 @@ class GoogleAdsService:
                     campaign.status,
                     campaign.advertising_channel_type,
                     campaign.bidding_strategy_type,
+                    campaign_budget.amount_micros,
                     campaign.campaign_budget
                 FROM campaign
             """
@@ -222,6 +223,14 @@ class GoogleAdsService:
             if "results" in result:
                 for item in result["results"]:
                     campaign_data = item.get("campaign", {})
+                    campaign_budget = item.get("campaignBudget", {})
+                    
+                    # Extrair o valor do orçamento em micros e converter para a unidade monetária normal
+                    budget_micros = campaign_budget.get("amountMicros", 0)
+                    budget = float(budget_micros) / 1_000_000 if budget_micros else 0.0
+                    
+                    # Log para depuração
+                    logger.debug(f"Campaign ID: {campaign_data.get('id', '')}, Budget Micros: {budget_micros}, Budget: {budget}")
                     
                     campaigns.append({
                         "campaignId": campaign_data.get("id", ""),
@@ -229,7 +238,7 @@ class GoogleAdsService:
                         "status": campaign_data.get("status", ""),
                         "type": campaign_data.get("advertisingChannelType", ""),
                         "biddingStrategy": campaign_data.get("biddingStrategyType", ""),
-                        "budget": 0.0  # Valor padrão para orçamento quando não temos dados de budget
+                        "budget": budget  # Valor convertido de micros
                     })
             
             logger.info(f"Successfully listed {len(campaigns)} campaigns for customer ID: {customer_id}")
