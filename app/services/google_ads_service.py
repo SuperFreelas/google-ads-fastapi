@@ -275,7 +275,7 @@ class GoogleAdsService:
             response = {
                 "success": True,
                 "message": "Budget update initiated",
-                "details": {
+                "update_details": {
                     "customer_id": customer_id,
                     "campaign_id": campaign_id,
                     "campaign_name": campaign_info.get("name", ""),
@@ -315,7 +315,7 @@ class GoogleAdsService:
                     update_result = await self._make_request(endpoint, method="POST", data=data)
                     logger.info(f"Budget update result: {update_result}")
                     
-                    response["details"]["updates"].append({
+                    response["update_details"]["updates"].append({
                         "type": "budget",
                         "previous_value": "Unknown",
                         "new_value": new_budget,
@@ -326,7 +326,7 @@ class GoogleAdsService:
                     logger.error(f"Error updating budget: {str(e)}")
                     response["success"] = False
                     response["message"] = f"Error updating budget: {str(e)}"
-                    response["details"]["updates"].append({
+                    response["update_details"]["updates"].append({
                         "type": "budget",
                         "new_value": new_budget,
                         "status": "failed",
@@ -337,7 +337,7 @@ class GoogleAdsService:
             if new_bid:
                 # This would be implemented similar to the budget update
                 # For now, just add to the response
-                response["details"]["updates"].append({
+                response["update_details"]["updates"].append({
                     "type": "bid",
                     "previous_value": "Unknown",
                     "new_value": new_bid,
