@@ -268,43 +268,83 @@ class GoogleAdsService:
             if not new_budget and not new_bid:
                 raise HTTPException(status_code=400, detail="Either new budget or new bid must be provided")
                 
-            # Get campaign info
+            # Get campaign info to check current values and get resource names
             campaign_info = await self._get_campaign_info(customer_id, campaign_id)
             logger.info(f"Campaign info: {campaign_info}")
             
-            # Simulation mode - only return what would be updated
-            # This is safer as updating the actual campaign budgets requires more permissions
-            # and specific formatting that varies by account type
-            
             response = {
                 "success": True,
-                "message": "Simulation mode - showing what would be updated",
-                "update_details": {
+                "message": "Budget update initiated",
+                "details": {
                     "customer_id": customer_id,
                     "campaign_id": campaign_id,
                     "campaign_name": campaign_info.get("name", ""),
-                    "actions": []
+                    "updates": []
                 }
             }
             
+            # If we need to update the budget
             if new_budget:
+                # Get the campaign budget resource name
                 budget_resource = campaign_info.get("campaignBudget", "")
-                response["update_details"]["actions"].append({
-                    "action_type": "UPDATE_BUDGET",
-                    "resource": budget_resource,
-                    "current_value": "Unknown (requires additional API call)",
-                    "new_value": f"{new_budget} (in account currency)",
-                    "new_value_micros": int(new_budget * 1_000_000)
-                })
+                if not budget_resource:
+                    raise HTTPException(status_code=400, detail="Campaign budget resource not found")
+                
+                # Convert currency to micros (Google Ads API uses micros)
+                budget_micros = int(new_budget * 1_000_000)
+                
+                # Create mutation for updating budget
+                endpoint = f"customers/{customer_id}/campaignBudgets:mutate"
+                
+                # Build the mutation data
+                budget_id = budget_resource.split('/')[-1]  # Extract ID from resource name
+                data = {
+                    "operations": [
+                        {
+                            "updateMask": "amountMicros",
+                            "update": {
+                                "resourceName": budget_resource,
+                                "amountMicros": str(budget_micros)
+                            }
+                        }
+                    ]
+                }
+                
+                # Make the API call to update the budget
+                try:
+                    update_result = await self._make_request(endpoint, method="POST", data=data)
+                    logger.info(f"Budget update result: {update_result}")
+                    
+                    response["details"]["updates"].append({
+                        "type": "budget",
+                        "previous_value": "Unknown",
+                        "new_value": new_budget,
+                        "new_value_micros": budget_micros,
+                        "status": "success"
+                    })
+                except Exception as e:
+                    logger.error(f"Error updating budget: {str(e)}")
+                    response["success"] = False
+                    response["message"] = f"Error updating budget: {str(e)}"
+                    response["details"]["updates"].append({
+                        "type": "budget",
+                        "new_value": new_budget,
+                        "status": "failed",
+                        "error": str(e)
+                    })
             
+            # If we need to update the bid
             if new_bid:
-                response["update_details"]["actions"].append({
-                    "action_type": "UPDATE_BID",
-                    "current_value": "Unknown (requires additional API call)",
-                    "new_value": f"{new_bid} (multiplier)"
+                # This would be implemented similar to the budget update
+                # For now, just add to the response
+                response["details"]["updates"].append({
+                    "type": "bid",
+                    "previous_value": "Unknown",
+                    "new_value": new_bid,
+                    "status": "not_implemented"
                 })
+                response["message"] += ", bid update not implemented yet"
             
-            logger.info(f"Simulation response: {response}")
             return response
             
         except HTTPException as e:
