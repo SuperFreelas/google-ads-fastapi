@@ -47,6 +47,11 @@ class UpdateResponse(BaseModel):
     message: str
     update_details: Optional[Dict] = None
 
+class BiddingStrategyUpdate(BaseModel):
+    customerId: str
+    campaignId: str
+    biddingStrategy: str
+
 # Dependency to get GoogleAdsService instance
 async def get_ads_service():
     try:
@@ -132,4 +137,25 @@ async def get_campaign_performance(
         raise
     except Exception as e:
         logger.error(f"Error getting campaign performance: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting campaign performance: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error getting campaign performance: {str(e)}")
+
+@router.post("/update-bidding-strategy", response_model=UpdateResponse)
+async def update_bidding_strategy(
+    update_data: BiddingStrategyUpdate,
+    service: GoogleAdsService = Depends(get_ads_service)
+):
+    """
+    Update campaign bidding strategy
+    """
+    try:
+        result = await service.update_bidding_strategy(
+            update_data.customerId,
+            update_data.campaignId,
+            update_data.biddingStrategy
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating bidding strategy: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating bidding strategy: {str(e)}") 

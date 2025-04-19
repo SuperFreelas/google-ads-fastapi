@@ -456,4 +456,104 @@ class GoogleAdsService:
             raise
         except Exception as e:
             logger.error(f"Error getting campaign performance: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error getting campaign performance: {str(e)}") 
+            raise HTTPException(status_code=500, detail=f"Error getting campaign performance: {str(e)}")
+    
+    async def update_bidding_strategy(self, customer_id: str, campaign_id: str, bidding_strategy: str) -> Dict:
+        """
+        Update campaign bidding strategy
+        
+        Args:
+            customer_id: The customer ID that owns the campaign
+            campaign_id: The campaign ID to update
+            bidding_strategy: New bidding strategy (e.g., MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE, 
+                             TARGET_CPA, TARGET_ROAS, MANUAL_CPC)
+            
+        Returns:
+            Dict: Update status
+        """
+        logger.info(f"Updating bidding strategy for campaign {campaign_id} in account {customer_id} to {bidding_strategy}")
+        
+        try:
+            # Get campaign info to check current values and get resource names
+            campaign_info = await self._get_campaign_info(customer_id, campaign_id)
+            logger.info(f"Campaign info: {campaign_info}")
+            
+            # Validate the bidding strategy
+            valid_strategies = ["MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE", "TARGET_CPA", 
+                             "TARGET_ROAS", "MANUAL_CPC", "TARGET_SPEND"]
+            
+            if bidding_strategy not in valid_strategies:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid bidding strategy: {bidding_strategy}. Valid strategies are: {', '.join(valid_strategies)}"
+                )
+            
+            response = {
+                "success": True,
+                "message": "Bidding strategy update initiated",
+                "update_details": {
+                    "customer_id": customer_id,
+                    "campaign_id": campaign_id,
+                    "campaign_name": campaign_info.get("name", ""),
+                    "updates": []
+                }
+            }
+            
+            # Create mutation for updating bidding strategy
+            endpoint = f"customers/{customer_id}/campaigns:mutate"
+            
+            # Map API bidding strategy names to the required format for the API
+            strategy_mapping = {
+                "MAXIMIZE_CONVERSIONS": {"maximizeConversions": {}},
+                "MAXIMIZE_CONVERSION_VALUE": {"maximizeConversionValue": {}},
+                "TARGET_CPA": {"targetCpa": {"targetCpaMicros": "1000000"}},  # Default $1 CPA
+                "TARGET_ROAS": {"targetRoas": {"targetRoas": 1.0}},  # Default 100% ROAS
+                "MANUAL_CPC": {"manualCpc": {"enhancedCpcEnabled": True}},
+                "TARGET_SPEND": {"targetSpend": {}}
+            }
+            
+            # Build the mutation data
+            data = {
+                "operations": [
+                    {
+                        "updateMask": "biddingStrategy",
+                        "update": {
+                            "resourceName": f"customers/{customer_id}/campaigns/{campaign_id}",
+                            "biddingStrategy": strategy_mapping[bidding_strategy]
+                        }
+                    }
+                ]
+            }
+            
+            # Make the API call to update the bidding strategy
+            try:
+                update_result = await self._make_request(endpoint, method="POST", data=data)
+                logger.info(f"Bidding strategy update result: {update_result}")
+                
+                response["update_details"]["updates"].append({
+                    "type": "bidding_strategy",
+                    "previous_value": campaign_info.get("biddingStrategyType", "Unknown"),
+                    "new_value": bidding_strategy,
+                    "status": "success"
+                })
+            except Exception as e:
+                logger.error(f"Error updating bidding strategy: {str(e)}")
+                response["success"] = False
+                response["message"] = f"Error updating bidding strategy: {str(e)}"
+                response["update_details"]["updates"].append({
+                    "type": "bidding_strategy",
+                    "previous_value": campaign_info.get("biddingStrategyType", "Unknown"),
+                    "new_value": bidding_strategy,
+                    "status": "failed",
+                    "error": str(e)
+                })
+            
+            return response
+            
+        except HTTPException as e:
+            logger.error(f"Error in update_bidding_strategy: {e.detail}")
+            raise
+        except Exception as e:
+            error_msg = f"Error updating campaign bidding strategy: {str(e)}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=500, detail=error_msg) 
